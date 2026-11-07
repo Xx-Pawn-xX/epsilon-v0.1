@@ -4,7 +4,7 @@ importScripts("engine.js");
 
 let activeId = 0;
 
-self.onmessage = function (event) {
+self.onmessage = async function (event) {
   const data = event.data || {};
 
   if (data.type === "stop") {
@@ -22,18 +22,39 @@ self.onmessage = function (event) {
     ply: data.position.ply || 0
   };
 
-  const result = EpsilonEngine.search(
-    position,
-    data.options || {},
-    progress => {
-      if (requestId === activeId) {
-        self.postMessage({ type: "progress", requestId, progress });
-      }
-    },
-    () => requestId !== activeId
-  );
+  try {
+    const result = await EpsilonEngine.searchAsync(
+      position,
+      data.options || {},
 
-  if (requestId === activeId) {
-    self.postMessage({ type: "complete", requestId, result });
+      progress => {
+        if (requestId !== activeId) return;
+
+        self.postMessage({
+          type: "progress",
+          requestId,
+          progress
+        });
+      },
+
+      () => requestId !== activeId
+    );
+
+    if (requestId !== activeId) return;
+
+    self.postMessage({
+      type: "complete",
+      requestId,
+      result
+    });
+
+  } catch (error) {
+    if (requestId !== activeId) return;
+
+    self.postMessage({
+      type: "error",
+      requestId,
+      message: error.message || "Engine search failed."
+    });
   }
 };
