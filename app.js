@@ -1,3 +1,4 @@
+
 (function () {
   "use strict";
 
@@ -5,15 +6,330 @@
   const $ = id => document.getElementById(id);
   const boardEl = $("board");
 
+  if (!E || !boardEl) {
+    console.error("EPSILON: Engine or board not found.");
+    return;
+  }
+
   let position = E.initialPosition();
   let history = [{ position: E.clonePosition(position), move: null }];
-  let cursor = 0, selected = -1, flipped = false, lastMove = null;
+  let cursor = 0;
+  let selected = -1;
+  let flipped = false;
+  let lastMove = null;
 
   let analysisWorker = null;
   let analysisRequest = 0;
-  let latestAnalysis = null;
+  let analysisTimer = null;
 
   const squares = [];
+
+  // =========================================================
+  // VISUAL REDESIGN — NAVY / WHITE / BLACK
+  // =========================================================
+
+  function installTheme() {
+    const font = document.createElement("link");
+    font.rel = "stylesheet";
+    font.href =
+      "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap";
+    document.head.appendChild(font);
+
+    const style = document.createElement("style");
+
+    style.textContent = `
+      :root {
+        --red: #4779d5;
+        --red2: #244b91;
+        --navy: #244b91;
+        --navy-light: #4779d5;
+        --cyan: #8eb8ff;
+      }
+
+      body {
+        font-family: Inter, system-ui, sans-serif !important;
+      }
+
+      button, input {
+        font-family: inherit;
+      }
+
+      .brand-mark,
+      .brand-copy em,
+      .footer b {
+        color: #8eb8ff !important;
+      }
+
+      .turn-disc.white {
+        background: #f5f6f8;
+        border: 1px solid #9ca8b9;
+      }
+
+      .turn-disc.black {
+        background: #171d28;
+        border: 1px solid #71809a;
+      }
+
+      .piece.white {
+        background:
+          radial-gradient(circle at 34% 25%,
+            #ffffff,
+            #e9edf4 58%,
+            #aeb9ca);
+        border: 2px solid #ffffff;
+        box-shadow:
+          0 5px 5px #0007,
+          inset 0 3px 4px #ffffff,
+          inset 0 -5px 7px #8794a8;
+      }
+
+      .piece.black {
+        background:
+          radial-gradient(circle at 34% 25%,
+            #46536a,
+            #202a3b 58%,
+            #101725);
+        border: 2px solid #71809a;
+      }
+
+      .piece.king:after {
+        color: #8eb8ff !important;
+        text-shadow: 0 2px 4px #000 !important;
+      }
+
+      .analyze-button,
+      .icon-button,
+      .subtle-button {
+        background: linear-gradient(145deg, #244b91, #172f5d) !important;
+        border: 1px solid #4169a9 !important;
+        color: #edf4ff !important;
+        box-shadow: 0 5px 16px #10274b55;
+      }
+
+      .analyze-button:hover,
+      .icon-button:hover,
+      .subtle-button:hover {
+        background: linear-gradient(145deg, #315fae, #1d3c73) !important;
+        border-color: #6d99df !important;
+      }
+
+      .analyze-button:disabled {
+        opacity: .6;
+      }
+
+      input[type=range] {
+        accent-color: #4779d5 !important;
+      }
+
+      .best-move,
+      .history-row .active-move {
+        color: #8eb8ff !important;
+      }
+
+      .eval-meter {
+        display: none !important;
+      }
+
+      .analyze-button {
+        display: none !important;
+      }
+
+      .board-frame {
+        display: flex !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+      }
+
+      .epsilon-board-wrap {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .epsilon-board-wrap .board {
+        width: 100%;
+      }
+
+      .epsilon-board-wrap .rank-labels {
+        left: -19px;
+      }
+
+      .epsilon-board-wrap .file-labels {
+        left: 0;
+        right: 0;
+      }
+
+      .epsilon-eval-rail {
+        width: 43px;
+        flex: 0 0 43px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        padding: 3px 0 22px;
+        user-select: none;
+      }
+
+      .epsilon-eval-label {
+        font: 600 8px 'JetBrains Mono', monospace;
+        letter-spacing: .4px;
+        color: #aab7ca;
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+      }
+
+      .epsilon-eval-track {
+        position: relative;
+        flex: 1;
+        width: 17px;
+        min-height: 100px;
+        border-radius: 5px;
+        overflow: hidden;
+        border: 1px solid #66748a;
+        background: #f1f3f7;
+        box-shadow: 0 5px 18px #0005;
+      }
+
+      .epsilon-eval-black {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 50%;
+        background: linear-gradient(90deg, #101725, #29364b);
+        transition: height .35s ease;
+      }
+
+      .epsilon-eval-white {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 50%;
+        background: linear-gradient(90deg, #cbd4e1, #ffffff);
+        transition: height .35s ease;
+      }
+
+      .epsilon-eval-divider {
+        position: absolute;
+        left: -3px;
+        right: -3px;
+        height: 3px;
+        top: 50%;
+        background: #4779d5;
+        box-shadow: 0 0 7px #4779d5;
+        z-index: 2;
+        transition: top .35s ease;
+      }
+
+      .eval-main strong {
+        font-family: 'JetBrains Mono', monospace !important;
+      }
+
+      .panel {
+        border-color: #273750;
+      }
+
+      .toast {
+        border-color: #4169a9;
+      }
+
+      @media(max-width:600px) {
+        .epsilon-eval-rail {
+          width: 30px;
+          flex-basis: 30px;
+        }
+
+        .epsilon-eval-track {
+          width: 13px;
+        }
+
+        .epsilon-eval-label {
+          font-size: 7px;
+        }
+
+        .board-frame {
+          gap: 7px !important;
+        }
+
+        .epsilon-board-wrap .rank-labels {
+          left: -14px;
+        }
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  // =========================================================
+  // EVALUATION BAR
+  // Positive = NEW BLACK (formerly RED)
+  // Negative = NEW WHITE (formerly BLACK)
+  // =========================================================
+
+  let evalBlack = null;
+  let evalWhite = null;
+  let evalDivider = null;
+
+  function createEvaluationBar() {
+    const frame = boardEl.parentElement;
+
+    const wrap = document.createElement("div");
+    wrap.className = "epsilon-board-wrap";
+
+    frame.insertBefore(wrap, boardEl);
+
+    const rankLabels = frame.querySelector(".rank-labels");
+    const fileLabels = frame.querySelector(".file-labels");
+
+    wrap.appendChild(boardEl);
+
+    if (rankLabels) wrap.appendChild(rankLabels);
+    if (fileLabels) wrap.appendChild(fileLabels);
+
+    const rail = document.createElement("div");
+    rail.className = "epsilon-eval-rail";
+
+    rail.innerHTML = `
+      <span class="epsilon-eval-label">BLACK</span>
+
+      <div class="epsilon-eval-track">
+        <div class="epsilon-eval-black"></div>
+        <div class="epsilon-eval-white"></div>
+        <div class="epsilon-eval-divider"></div>
+      </div>
+
+      <span class="epsilon-eval-label">WHITE</span>
+    `;
+
+    frame.appendChild(rail);
+
+    evalBlack = rail.querySelector(".epsilon-eval-black");
+    evalWhite = rail.querySelector(".epsilon-eval-white");
+    evalDivider = rail.querySelector(".epsilon-eval-divider");
+
+    updateEvaluationBar(0);
+  }
+
+  function updateEvaluationBar(score) {
+    if (!evalBlack) return;
+
+    // Black advantage grows toward the top.
+    const blackShare = Math.max(
+      3,
+      Math.min(97, 50 + score * 8)
+    );
+
+    const whiteShare = 100 - blackShare;
+
+    evalBlack.style.height = blackShare + "%";
+    evalWhite.style.height = whiteShare + "%";
+    evalDivider.style.top = blackShare + "%";
+  }
+
+  // =========================================================
+  // BOARD
+  // =========================================================
 
   function createBoard() {
     boardEl.innerHTML = "";
@@ -26,15 +342,17 @@
       const square = document.createElement("button");
 
       square.type = "button";
-      square.className = "square " + ((r + c) % 2 ? "dark" : "light");
+      square.className =
+        "square " + ((r + c) % 2 ? "dark" : "light");
+
       square.setAttribute("role", "gridcell");
 
       square.dataset.row = r;
       square.dataset.col = c;
 
-      square.addEventListener("click", () =>
-        onSquareClick(Number(square.dataset.index))
-      );
+      square.addEventListener("click", () => {
+        onSquareClick(Number(square.dataset.index));
+      });
 
       boardEl.appendChild(square);
       squares.push(square);
@@ -51,14 +369,6 @@
     return E.squareAt(r, c);
   }
 
-  function logicalToVisual(s) {
-    const r = E.rowOf(s);
-    const c = E.colOf(s);
-
-    return (flipped ? 7 - r : r) * 8 +
-           (flipped ? 7 - c : c);
-  }
-
   function renderBoard() {
     const legal = E.legalMoves(position);
 
@@ -70,8 +380,7 @@
       const s = visualToLogical(v);
       const el = squares[v];
 
-      // FIX: Remove old piece elements before rendering.
-      // This prevents pieces from multiplying on every redraw.
+      // Important: remove previous pieces before drawing.
       el.replaceChildren();
 
       el.dataset.index = s;
@@ -79,11 +388,11 @@
       const r = Math.floor(v / 8);
       const c = v % 8;
 
-      el.className = "square " + ((r + c) % 2 ? "dark" : "light");
+      el.className =
+        "square " + ((r + c) % 2 ? "dark" : "light");
 
       if (s < 0) {
         el.disabled = true;
-        el.setAttribute("aria-label", "Unplayable square");
         continue;
       }
 
@@ -114,9 +423,11 @@
       if (piece) {
         const disc = document.createElement("span");
 
+        // Original BLACK (+1) becomes WHITE.
+        // Original RED (-1) becomes BLACK.
         disc.className =
           "piece " +
-          (piece > 0 ? "black" : "red") +
+          (piece > 0 ? "white" : "black") +
           (Math.abs(piece) === 2 ? " king" : "");
 
         el.appendChild(disc);
@@ -125,11 +436,13 @@
       el.setAttribute("aria-label", squareLabel(s, piece));
     }
 
+    const whiteTurn = position.turn === E.BLACK;
+
     $("turnText").textContent =
-      position.turn === E.BLACK ? "BLACK TO MOVE" : "RED TO MOVE";
+      whiteTurn ? "WHITE TO MOVE" : "BLACK TO MOVE";
 
     $("turnChip").querySelector(".turn-disc").className =
-      "turn-disc " + (position.turn === E.BLACK ? "black" : "red");
+      "turn-disc " + (whiteTurn ? "white" : "black");
 
     $("backBtn").disabled = cursor === 0;
     $("forwardBtn").disabled = cursor >= history.length - 1;
@@ -140,10 +453,14 @@
   function squareLabel(s, piece) {
     return E.squareName(s) +
       (piece
-        ? (piece > 0 ? " black " : " red ") +
+        ? (piece > 0 ? " white " : " black ") +
           (Math.abs(piece) === 2 ? "king" : "man")
         : " empty");
   }
+
+  // =========================================================
+  // MOVE INPUT
+  // =========================================================
 
   function onSquareClick(s) {
     if (s < 0) return;
@@ -187,7 +504,6 @@
     cursor++;
     selected = -1;
     lastMove = move;
-    latestAnalysis = null;
 
     clearAnalysisDisplay();
     renderBoard();
@@ -196,7 +512,7 @@
 
     if (!legal.length) {
       showToast(
-        (position.turn === E.BLACK ? "Red" : "Black") +
+        (position.turn === E.BLACK ? "Black" : "White") +
         " wins — no legal moves."
       );
     } else if (legal.some(m => m.captures.length)) {
@@ -204,9 +520,15 @@
         "Capture is compulsory. Select a piece with a highlighted jump.";
     } else {
       $("boardNote").textContent =
-        "Move played. Select a piece to continue. The engine analyses the current position.";
+        "Position updated. EPSILON is analysing automatically.";
     }
+
+    scheduleAnalysis();
   }
+
+  // =========================================================
+  // MOVE HISTORY
+  // =========================================================
 
   function renderHistory() {
     const list = $("historyList");
@@ -231,33 +553,40 @@
       no.className = "move-no";
       no.textContent = String(Math.floor(i / 2) + 1) + ".";
 
-      const black = document.createElement("span");
-      black.textContent = E.moveNotation(played[i].move);
+      const white = document.createElement("span");
+      white.textContent = E.moveNotation(played[i].move);
 
       if (cursor === i + 1) {
-        black.className = "active-move";
+        white.className = "active-move";
       }
 
-      const red = document.createElement("span");
+      const black = document.createElement("span");
 
       if (played[i + 1]) {
-        red.textContent = E.moveNotation(played[i + 1].move);
+        black.textContent = E.moveNotation(played[i + 1].move);
 
         if (cursor === i + 2) {
-          red.className = "active-move";
+          black.className = "active-move";
         }
       }
 
-      row.append(no, black, red);
+      row.append(no, white, black);
       list.appendChild(row);
     }
 
     list.scrollTop = list.scrollHeight;
   }
 
+  // =========================================================
+  // ANALYSIS DISPLAY
+  // =========================================================
+
   function clearAnalysisDisplay() {
     $("evalValue").textContent = "—";
-    $("evalPerspective").textContent = "Run analysis to evaluate";
+
+    $("evalPerspective").textContent =
+      "Positive = Black · Negative = White";
+
     $("evalMarker").style.left = "50%";
 
     $("depthStat").textContent = "—";
@@ -271,14 +600,20 @@
       "Analysis will show the principal variation here.";
 
     $("moveExplanation").textContent =
-      "The engine has not evaluated this position yet.";
+      "Waiting for automatic analysis.";
 
-    $("lineTag").textContent = "NO DATA";
+    $("lineTag").textContent = "ANALYSING";
+
+    updateEvaluationBar(0);
   }
 
   function stopAnalysis() {
+    if (analysisTimer) {
+      clearTimeout(analysisTimer);
+      analysisTimer = null;
+    }
+
     if (analysisWorker) {
-      analysisWorker.postMessage({ type: "stop" });
       analysisWorker.terminate();
       analysisWorker = null;
     }
@@ -286,17 +621,29 @@
     analysisRequest++;
 
     $("progressWrap").hidden = true;
-    $("analyzeBtn").disabled = false;
-    $("analyzeBtnText").textContent = "ANALYZE POSITION";
     $("engineStatus").textContent = "ENGINE READY";
   }
 
-  function startAnalysis() {
+  // Automatically analyse every new position.
+  function scheduleAnalysis() {
     stopAnalysis();
 
-    const thisRequest = analysisRequest;
+    analysisTimer = setTimeout(() => {
+      analysisTimer = null;
+      startAnalysis();
+    }, 180);
+  }
 
-    analysisWorker = new Worker("worker.js");
+  function startAnalysis() {
+    if (analysisWorker) {
+      analysisWorker.terminate();
+      analysisWorker = null;
+    }
+
+    const thisRequest = ++analysisRequest;
+
+    const worker = new Worker("worker.js");
+    analysisWorker = worker;
 
     const depth = Number($("depthRange").value);
     const time = Number($("timeRange").value);
@@ -306,8 +653,6 @@
     $("progressText").textContent = "Searching position…";
     $("progressDepth").textContent = "DEPTH 0";
 
-    $("analyzeBtn").disabled = true;
-    $("analyzeBtnText").textContent = "ANALYZING…";
     $("engineStatus").textContent = "SEARCHING";
 
     $("depthStat").textContent = "0";
@@ -315,25 +660,23 @@
     $("timeStat").textContent = "0.0s";
     $("npsStat").textContent = "—";
 
-    analysisWorker.onmessage = event => {
+    worker.onmessage = event => {
       const data = event.data;
 
       if (thisRequest !== analysisRequest) return;
 
       if (data.type === "progress") {
-        const p = data.progress;
-        latestAnalysis = p;
-
-        updateAnalysis(p, false, depth, time);
+        updateAnalysis(data.progress, false, depth);
 
       } else if (data.type === "complete") {
-        updateAnalysis(data.result, true, depth, time);
+        updateAnalysis(data.result, true, depth);
 
-        analysisWorker.terminate();
-        analysisWorker = null;
+        worker.terminate();
 
-        $("analyzeBtn").disabled = false;
-        $("analyzeBtnText").textContent = "ANALYZE AGAIN";
+        if (analysisWorker === worker) {
+          analysisWorker = null;
+        }
+
         $("engineStatus").textContent = "ANALYSIS COMPLETE";
 
         $("progressText").textContent =
@@ -345,19 +688,25 @@
       }
     };
 
-    analysisWorker.onerror = err => {
+    worker.onerror = err => {
       console.error(err);
+
+      if (thisRequest !== analysisRequest) return;
 
       $("engineStatus").textContent = "ENGINE ERROR";
 
       showToast(
-        "Engine worker failed to load. Check that worker.js and engine.js are in the repository root."
+        "Engine worker failed. Check worker.js and engine.js."
       );
 
-      stopAnalysis();
+      worker.terminate();
+
+      if (analysisWorker === worker) {
+        analysisWorker = null;
+      }
     };
 
-    analysisWorker.postMessage({
+    worker.postMessage({
       type: "analyze",
 
       position: {
@@ -370,18 +719,32 @@
     });
   }
 
-  function updateAnalysis(result, complete, maxDepth, maxTime) {
-    const score = result.score / 100;
+  // =========================================================
+  // SCORE CONVERSION
+  // Engine score is from the side-to-move's perspective.
+  //
+  // Original BLACK = +1, now WHITE.
+  // Original RED = -1, now BLACK.
+  //
+  // Therefore:
+  // New Black score = -engineScore * sideToMove
+  // =========================================================
 
-    const sideName =
-      position.turn === E.BLACK ? "Black" : "Red";
+  function updateAnalysis(result, complete, maxDepth) {
+    const score = (-result.score * position.turn) / 100;
 
-    $("evalValue").textContent =
+    const formatted =
       (score > 0 ? "+" : "") + score.toFixed(2);
 
-    $("evalPerspective").textContent =
-      "From " + sideName + "'s perspective";
+    $("evalValue").textContent = formatted;
 
+    $("evalPerspective").textContent =
+      "Black advantage (+) · White advantage (−)";
+
+    // Update vertical evaluation bar.
+    updateEvaluationBar(score);
+
+    // Keep the old horizontal marker synchronized too.
     const normalized = Math.max(
       5,
       Math.min(95, 50 + score * 5)
@@ -432,7 +795,8 @@
             ? "The recommended move promotes a man to a king."
             : "The engine's highest-scoring continuation at the completed search depth.";
 
-      $("lineTag").textContent = "DEPTH " + result.depth;
+      $("lineTag").textContent =
+        "DEPTH " + result.depth;
 
     } else {
       $("bestMove").textContent = "No legal moves";
@@ -446,6 +810,10 @@
       $("lineTag").textContent = "TERMINAL";
     }
   }
+
+  // =========================================================
+  // UTILITIES
+  // =========================================================
 
   function showToast(message) {
     const t = document.createElement("div");
@@ -475,13 +843,16 @@
     lastMove = history[cursor].move;
 
     selected = -1;
-    latestAnalysis = null;
 
     clearAnalysisDisplay();
     renderBoard();
+
+    scheduleAnalysis();
   }
 
-  $("analyzeBtn").addEventListener("click", startAnalysis);
+  // =========================================================
+  // BUTTONS AND SETTINGS
+  // =========================================================
 
   $("newGameBtn").addEventListener("click", () => {
     stopAnalysis();
@@ -501,16 +872,18 @@
     renderBoard();
 
     $("boardNote").textContent =
-      "New game started. Black moves first. Captures are mandatory.";
+      "New position. EPSILON is analysing automatically.";
+
+    scheduleAnalysis();
   });
 
-  $("backBtn").addEventListener("click", () =>
-    restoreAt(cursor - 1)
-  );
+  $("backBtn").addEventListener("click", () => {
+    if (cursor > 0) restoreAt(cursor - 1);
+  });
 
-  $("forwardBtn").addEventListener("click", () =>
-    restoreAt(cursor + 1)
-  );
+  $("forwardBtn").addEventListener("click", () => {
+    if (cursor < history.length - 1) restoreAt(cursor + 1);
+  });
 
   $("flipBtn").addEventListener("click", () => {
     flipped = !flipped;
@@ -520,35 +893,43 @@
   $("clearBtn").addEventListener("click", () => {
     stopAnalysis();
     clearAnalysisDisplay();
+
+    $("engineStatus").textContent = "ANALYSIS CLEARED";
   });
 
   $("depthRange").addEventListener("input", e => {
     $("depthValue").textContent = e.target.value + " plies";
+    scheduleAnalysis();
   });
 
   $("timeRange").addEventListener("input", e => {
     $("timeValue").textContent =
       e.target.value +
       (e.target.value === "1" ? " second" : " seconds");
+
+    scheduleAnalysis();
   });
 
   document.addEventListener("keydown", e => {
-    if (
-      (e.key === "Enter" || e.key === " ") &&
-      document.activeElement === $("analyzeBtn")
-    ) {
-      e.preventDefault();
-      startAnalysis();
-    }
-
     if (e.key === "Escape") {
       selected = -1;
       renderBoard();
     }
   });
 
+  // =========================================================
+  // INITIALIZE
+  // =========================================================
+
+  installTheme();
   createBoard();
+  createEvaluationBar();
+
   renderBoard();
+  clearAnalysisDisplay();
+
+  // Automatically analyse the starting position.
+  scheduleAnalysis();
 
   window.EpsilonApp = {
     getPosition: () => E.clonePosition(position),
