@@ -55,8 +55,8 @@
     const r = E.rowOf(s);
     const c = E.colOf(s);
 
-    return (flipped ? 7-r : r) * 8 +
-           (flipped ? 7-c : c);
+    return (flipped ? 7 - r : r) * 8 +
+           (flipped ? 7 - c : c);
   }
 
   function renderBoard() {
@@ -70,6 +70,10 @@
       const s = visualToLogical(v);
       const el = squares[v];
 
+      // FIX: Remove old piece elements before rendering.
+      // This prevents pieces from multiplying on every redraw.
+      el.replaceChildren();
+
       el.dataset.index = s;
 
       const r = Math.floor(v / 8);
@@ -79,13 +83,15 @@
 
       if (s < 0) {
         el.disabled = true;
-        el.innerHTML = "";
+        el.setAttribute("aria-label", "Unplayable square");
         continue;
       }
 
       el.disabled = false;
 
-      if (s === selected) el.classList.add("selected");
+      if (s === selected) {
+        el.classList.add("selected");
+      }
 
       if (lastMove && s === lastMove.from) {
         el.classList.add("last-from");
@@ -172,6 +178,7 @@
     position = E.applyMove(position, move);
 
     history = history.slice(0, cursor + 1);
+
     history.push({
       position: E.clonePosition(position),
       move
@@ -259,6 +266,7 @@
     $("npsStat").textContent = "—";
 
     $("bestMove").textContent = "—";
+
     $("pvLine").textContent =
       "Analysis will show the principal variation here.";
 
@@ -287,6 +295,7 @@
     stopAnalysis();
 
     const thisRequest = analysisRequest;
+
     analysisWorker = new Worker("worker.js");
 
     const depth = Number($("depthRange").value);
@@ -294,7 +303,6 @@
 
     $("progressWrap").hidden = false;
     $("progressBar").style.width = "0%";
-
     $("progressText").textContent = "Searching position…";
     $("progressDepth").textContent = "DEPTH 0";
 
@@ -382,6 +390,7 @@
     $("evalMarker").style.left = normalized + "%";
 
     $("depthStat").textContent = result.depth;
+
     $("nodesStat").textContent =
       Number(result.nodes).toLocaleString();
 
@@ -427,6 +436,7 @@
 
     } else {
       $("bestMove").textContent = "No legal moves";
+
       $("pvLine").textContent =
         "This side has no legal continuation.";
 
