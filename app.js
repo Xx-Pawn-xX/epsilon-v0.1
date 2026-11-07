@@ -24,6 +24,9 @@
 
   const squares = [];
 
+  let boardWrap = null;
+  let arrowLayer = null;
+
   // =========================================================
   // VISUAL REDESIGN — NAVY / WHITE / BLACK
   // =========================================================
@@ -159,6 +162,43 @@
         right: 0;
       }
 
+      /* Best-move arrow overlay */
+      .epsilon-best-arrow-layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 20;
+        pointer-events: none;
+        overflow: visible;
+      }
+
+      .epsilon-best-arrow {
+        fill: none;
+        stroke: #65a4ff;
+        stroke-width: 9;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        filter:
+          drop-shadow(0 0 4px #367fe8)
+          drop-shadow(0 0 9px #367fe8aa);
+        opacity: .94;
+      }
+
+      .epsilon-best-arrow-head {
+        fill: #8ebeff;
+        stroke: #d4e7ff;
+        stroke-width: 1.5;
+        filter: drop-shadow(0 0 5px #367fe8);
+      }
+
+      .epsilon-best-arrow-origin {
+        fill: #65a4ff;
+        stroke: #d4e7ff;
+        stroke-width: 3;
+        filter: drop-shadow(0 0 5px #367fe8);
+      }
+
       .epsilon-eval-rail {
         width: 43px;
         flex: 0 0 43px;
@@ -255,6 +295,10 @@
         .epsilon-board-wrap .rank-labels {
           left: -14px;
         }
+
+        .epsilon-best-arrow {
+          stroke-width: 7;
+        }
       }
     `;
 
@@ -263,8 +307,8 @@
 
   // =========================================================
   // EVALUATION BAR
-  // Positive = NEW BLACK (formerly RED)
-  // Negative = NEW WHITE (formerly BLACK)
+  // Positive = BLACK advantage
+  // Negative = WHITE advantage
   // =========================================================
 
   let evalBlack = null;
@@ -274,18 +318,29 @@
   function createEvaluationBar() {
     const frame = boardEl.parentElement;
 
-    const wrap = document.createElement("div");
-    wrap.className = "epsilon-board-wrap";
+    boardWrap = document.createElement("div");
+    boardWrap.className = "epsilon-board-wrap";
 
-    frame.insertBefore(wrap, boardEl);
+    frame.insertBefore(boardWrap, boardEl);
 
     const rankLabels = frame.querySelector(".rank-labels");
     const fileLabels = frame.querySelector(".file-labels");
 
-    wrap.appendChild(boardEl);
+    boardWrap.appendChild(boardEl);
 
-    if (rankLabels) wrap.appendChild(rankLabels);
-    if (fileLabels) wrap.appendChild(fileLabels);
+    if (rankLabels) boardWrap.appendChild(rankLabels);
+    if (fileLabels) boardWrap.appendChild(fileLabels);
+
+    // Create SVG overlay for best-move arrows.
+    arrowLayer = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+
+    arrowLayer.setAttribute("class", "epsilon-best-arrow-layer");
+    arrowLayer.setAttribute("aria-hidden", "true");
+
+    boardWrap.appendChild(arrowLayer);
 
     const rail = document.createElement("div");
     rail.className = "epsilon-eval-rail";
@@ -314,7 +369,6 @@
   function updateEvaluationBar(score) {
     if (!evalBlack) return;
 
-    // Black advantage grows toward the top.
     const blackShare = Math.max(
       3,
       Math.min(97, 50 + score * 8)
@@ -325,6 +379,117 @@
     evalBlack.style.height = blackShare + "%";
     evalWhite.style.height = whiteShare + "%";
     evalDivider.style.top = blackShare + "%";
+  }
+
+  // =========================================================
+  // BEST-MOVE ARROW
+  // =========================================================
+
+  function clearBestMoveArrow() {
+    if (arrowLayer) {
+      arrowLayer.replaceChildren();
+    }
+  }
+
+  function drawBestMoveArrow(move) {
+    clearBestMoveArrow();
+
+    if (!move || !arrowLayer || !boardWrap) return;
+
+    const fromSquare = squares.find(
+      square => Number(square.dataset.index) === move.from
+    );
+
+    const toSquare = squares.find(
+      square => Number(square.dataset.index) === move.to
+    );
+
+    if (!fromSquare || !toSquare) return;
+
+    const wrapRect = boardWrap.getBoundingClientRect();
+    const fromRect = fromSquare.getBoundingClientRect();
+    const toRect = toSquare.getBoundingClientRect();
+
+    if (!wrapRect.width || !wrapRect.height) return;
+
+    arrowLayer.setAttribute(
+      "viewBox",
+      `0 0 ${wrapRect.width} ${wrapRect.height}`
+    );
+
+    arrowLayer.setAttribute("preserveAspectRatio", "none");
+
+    const x1 =
+      fromRect.left + fromRect.width / 2 - wrapRect.left;
+
+    const y1 =
+      fromRect.top + fromRect.height / 2 - wrapRect.top;
+
+    const x2 =
+      toRect.left + toRect.width / 2 - wrapRect.left;
+
+    const y2 =
+      toRect.top + toRect.height / 2 - wrapRect.top;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    if (!length) return;
+
+    // Shorten the arrow slightly so it does not cover
+    // the entire destination piece.
+    const unitX = dx / length;
+    const unitY = dy / length;
+
+    const startX = x1 + unitX * 7;
+    const startY = y1 + unitY * 7;
+
+    const endX = x2 - unitX * 22;
+    const endY = y2 - unitY * 22;
+
+    const ns = "http://www.w3.org/2000/svg";
+
+    const origin = document.createElementNS(ns, "circle");
+    origin.setAttribute("cx", startX);
+    origin.setAttribute("cy", startY);
+    origin.setAttribute("r", "7");
+    origin.setAttribute("class", "epsilon-best-arrow-origin");
+
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", startX);
+    line.setAttribute("y1", startY);
+    line.setAttribute("x2", endX);
+    line.setAttribute("y2", endY);
+    line.setAttribute("class", "epsilon-best-arrow");
+
+    // Arrowhead.
+    const headLength = 24;
+    const headWidth = 19;
+
+    const baseX = endX - unitX * headLength;
+    const baseY = endY - unitY * headLength;
+
+    const perpX = -unitY;
+    const perpY = unitX;
+
+    const p1 = `${endX},${endY}`;
+    const p2 =
+      `${baseX + perpX * headWidth / 2},` +
+      `${baseY + perpY * headWidth / 2}`;
+
+    const p3 =
+      `${baseX - perpX * headWidth / 2},` +
+      `${baseY - perpY * headWidth / 2}`;
+
+    const head = document.createElementNS(ns, "polygon");
+    head.setAttribute(
+      "points",
+      `${p1} ${p2} ${p3}`
+    );
+    head.setAttribute("class", "epsilon-best-arrow-head");
+
+    arrowLayer.append(origin, line, head);
   }
 
   // =========================================================
@@ -380,7 +545,6 @@
       const s = visualToLogical(v);
       const el = squares[v];
 
-      // Important: remove previous pieces before drawing.
       el.replaceChildren();
 
       el.dataset.index = s;
@@ -423,11 +587,11 @@
       if (piece) {
         const disc = document.createElement("span");
 
-        // Original BLACK (+1) becomes WHITE.
-        // Original RED (-1) becomes BLACK.
+        // Original BLACK (+1) remains BLACK.
+        // Original RED (-1) becomes WHITE.
         disc.className =
           "piece " +
-          (piece > 0 ? "white" : "black") +
+          (piece > 0 ? "black" : "white") +
           (Math.abs(piece) === 2 ? " king" : "");
 
         el.appendChild(disc);
@@ -436,13 +600,18 @@
       el.setAttribute("aria-label", squareLabel(s, piece));
     }
 
-    const whiteTurn = position.turn === E.BLACK;
+    // Keep the arrow correctly positioned after board flips.
+    if (currentBestMove) {
+      drawBestMoveArrow(currentBestMove);
+    }
+
+    const blackTurn = position.turn === E.BLACK;
 
     $("turnText").textContent =
-      whiteTurn ? "WHITE TO MOVE" : "BLACK TO MOVE";
+      blackTurn ? "BLACK TO MOVE" : "WHITE TO MOVE";
 
     $("turnChip").querySelector(".turn-disc").className =
-      "turn-disc " + (whiteTurn ? "white" : "black");
+      "turn-disc " + (blackTurn ? "black" : "white");
 
     $("backBtn").disabled = cursor === 0;
     $("forwardBtn").disabled = cursor >= history.length - 1;
@@ -453,7 +622,7 @@
   function squareLabel(s, piece) {
     return E.squareName(s) +
       (piece
-        ? (piece > 0 ? " white " : " black ") +
+        ? (piece > 0 ? " black " : " white ") +
           (Math.abs(piece) === 2 ? "king" : "man")
         : " empty");
   }
@@ -505,6 +674,7 @@
     selected = -1;
     lastMove = move;
 
+    currentBestMove = null;
     clearAnalysisDisplay();
     renderBoard();
 
@@ -581,6 +751,8 @@
   // ANALYSIS DISPLAY
   // =========================================================
 
+  let currentBestMove = null;
+
   function clearAnalysisDisplay() {
     $("evalValue").textContent = "—";
 
@@ -604,6 +776,9 @@
 
     $("lineTag").textContent = "ANALYSING";
 
+    currentBestMove = null;
+    clearBestMoveArrow();
+
     updateEvaluationBar(0);
   }
 
@@ -624,7 +799,6 @@
     $("engineStatus").textContent = "ENGINE READY";
   }
 
-  // Automatically analyse every new position.
   function scheduleAnalysis() {
     stopAnalysis();
 
@@ -721,17 +895,17 @@
 
   // =========================================================
   // SCORE CONVERSION
-  // Engine score is from the side-to-move's perspective.
   //
-  // Original BLACK = +1, now WHITE.
-  // Original RED = -1, now BLACK.
+  // Engine score is from the side-to-move perspective.
+  // Original BLACK = +1, and remains BLACK.
+  // Original RED = -1, and becomes WHITE.
   //
   // Therefore:
-  // New Black score = -engineScore * sideToMove
+  // New Black score = engineScore * sideToMove
   // =========================================================
 
   function updateAnalysis(result, complete, maxDepth) {
-    const score = (-result.score * position.turn) / 100;
+    const score = (result.score * position.turn) / 100;
 
     const formatted =
       (score > 0 ? "+" : "") + score.toFixed(2);
@@ -741,10 +915,8 @@
     $("evalPerspective").textContent =
       "Black advantage (+) · White advantage (−)";
 
-    // Update vertical evaluation bar.
     updateEvaluationBar(score);
 
-    // Keep the old horizontal marker synchronized too.
     const normalized = Math.max(
       5,
       Math.min(95, 50 + score * 5)
@@ -777,6 +949,8 @@
       Math.min(100, result.depth / maxDepth * 100) + "%";
 
     if (result.bestMove) {
+      currentBestMove = result.bestMove;
+
       $("bestMove").textContent =
         E.moveNotation(result.bestMove);
 
@@ -798,7 +972,13 @@
       $("lineTag").textContent =
         "DEPTH " + result.depth;
 
+      // Draw the recommended move on the board.
+      drawBestMoveArrow(result.bestMove);
+
     } else {
+      currentBestMove = null;
+      clearBestMoveArrow();
+
       $("bestMove").textContent = "No legal moves";
 
       $("pvLine").textContent =
@@ -844,6 +1024,7 @@
 
     selected = -1;
 
+    currentBestMove = null;
     clearAnalysisDisplay();
     renderBoard();
 
@@ -868,6 +1049,7 @@
     selected = -1;
     lastMove = null;
 
+    currentBestMove = null;
     clearAnalysisDisplay();
     renderBoard();
 
@@ -917,6 +1099,13 @@
     }
   });
 
+  // Redraw the arrow if the browser window changes size.
+  window.addEventListener("resize", () => {
+    if (currentBestMove) {
+      drawBestMoveArrow(currentBestMove);
+    }
+  });
+
   // =========================================================
   // INITIALIZE
   // =========================================================
@@ -928,7 +1117,6 @@
   renderBoard();
   clearAnalysisDisplay();
 
-  // Automatically analyse the starting position.
   scheduleAnalysis();
 
   window.EpsilonApp = {
