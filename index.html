@@ -1,0 +1,93 @@
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080b12">
+  <meta name="description" content="EPSILON 1 — an experimental English draughts analysis engine.">
+  <title>EPSILON 1 — Checkers Analysis</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="EPSILON 1 home">
+        <span class="brand-mark">ε</span>
+        <span class="brand-copy"><strong>EPSILON <em>1</em></strong><small>CHECKERS ANALYSIS ENGINE</small></span>
+      </a>
+      <div class="top-status"><span class="status-dot"></span><span id="engineStatus">ENGINE READY</span></div>
+    </header>
+
+    <main class="workspace">
+      <section class="board-column">
+        <div class="section-heading board-heading">
+          <div><span class="eyebrow">ANALYSIS BOARD</span><h1>Position lab</h1></div>
+          <div class="turn-chip" id="turnChip"><span class="turn-disc black"></span><span id="turnText">BLACK TO MOVE</span></div>
+        </div>
+
+        <div class="board-frame">
+          <div class="board-coordinates rank-labels" aria-hidden="true"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+          <div id="board" class="board" role="grid" aria-label="Checkers board"></div>
+          <div class="board-coordinates file-labels" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+        </div>
+
+        <div class="board-toolbar">
+          <div class="toolbar-group">
+            <button class="icon-button" id="newGameBtn" title="Reset to starting position" aria-label="New game">↺</button>
+            <button class="icon-button" id="backBtn" title="Undo move" aria-label="Undo move">←</button>
+            <button class="icon-button" id="forwardBtn" title="Redo move" aria-label="Redo move">→</button>
+          </div>
+          <div class="toolbar-group right-tools">
+            <button class="subtle-button" id="flipBtn">⇅ <span>Flip board</span></button>
+            <button class="subtle-button" id="clearBtn">Clear analysis</button>
+          </div>
+        </div>
+        <div class="board-note" id="boardNote">Select one of your pieces, then choose a highlighted destination. Captures are mandatory.</div>
+      </section>
+
+      <aside class="analysis-column">
+        <section class="panel engine-panel">
+          <div class="panel-heading"><div><span class="eyebrow">EPSILON CORE</span><h2>Engine analysis</h2></div><span class="live-pill"><i></i> LOCAL</span></div>
+          <div class="eval-card">
+            <div class="eval-main"><span class="eyebrow">POSITION EVALUATION</span><strong id="evalValue">—</strong><small id="evalPerspective">Run analysis to evaluate</small></div>
+            <div class="eval-meter"><div class="eval-black"></div><div class="eval-red"></div><div class="eval-marker" id="evalMarker"></div></div>
+          </div>
+          <button class="analyze-button" id="analyzeBtn"><span class="play-icon">▶</span><span id="analyzeBtnText">ANALYZE POSITION</span><span class="button-shortcut">↵</span></button>
+          <div class="progress-wrap" id="progressWrap" hidden><div class="progress-track"><div id="progressBar"></div></div><div class="progress-label"><span id="progressText">Searching…</span><span id="progressDepth">DEPTH 0</span></div></div>
+          <div class="stat-grid">
+            <div class="stat"><span>DEPTH</span><strong id="depthStat">—</strong></div>
+            <div class="stat"><span>NODES</span><strong id="nodesStat">—</strong></div>
+            <div class="stat"><span>TIME</span><strong id="timeStat">—</strong></div>
+            <div class="stat"><span>NODES / SEC</span><strong id="npsStat">—</strong></div>
+          </div>
+          <div class="settings-block">
+            <div class="setting-row"><label for="depthRange">Maximum depth</label><strong id="depthValue">10 plies</strong></div>
+            <input id="depthRange" type="range" min="1" max="24" value="10" step="1">
+            <div class="range-ends"><span>1 · QUICK</span><span>24 · DEEP</span></div>
+            <div class="setting-row time-setting"><label for="timeRange">Time limit</label><strong id="timeValue">5 seconds</strong></div>
+            <input id="timeRange" type="range" min="1" max="30" value="5" step="1">
+            <div class="range-ends"><span>1 SEC</span><span>30 SEC</span></div>
+          </div>
+        </section>
+
+        <section class="panel bestmove-panel">
+          <div class="panel-heading"><div><span class="eyebrow">TOP RECOMMENDATION</span><h2>Best line</h2></div><span class="tiny-tag" id="lineTag">NO DATA</span></div>
+          <div class="best-move" id="bestMove">—</div>
+          <div class="pv-line" id="pvLine">Analysis will show the principal variation here.</div>
+          <div class="move-explanation" id="moveExplanation">The engine has not evaluated this position yet.</div>
+        </section>
+
+        <section class="panel history-panel">
+          <div class="panel-heading"><div><span class="eyebrow">GAME RECORD</span><h2>Move history</h2></div><span class="tiny-tag" id="moveCount">0 MOVES</span></div>
+          <div class="history-list" id="historyList"><div class="empty-state">No moves played yet.<br><span>Make a move on the board to begin.</span></div></div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="footer"><span>EPSILON 1 <b>·</b> EXPERIMENTAL CHECKERS ENGINE</span><span>ENGLISH DRAUGHTS <b>·</b> 8×8</span></footer>
+  </div>
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
