@@ -1,5 +1,5 @@
 /* =========================================================
-   EPSILON CORE v0.1
+   EPSILON CORE v0.2
    English Draughts Search Engine
 
    Search:
@@ -13,7 +13,9 @@
    - History heuristic
    - PV move ordering
    - Capture extensions
-   - Forced-capture quiescence
+   - Forced-capture quiescence (complete capture sequences)
+   - Conservative Late Move Reductions
+   - Improved transposition-table replacement
    - Interruptible asynchronous search
 
    Compatible with the original EpsilonEngine API.
@@ -29,7 +31,6 @@
   const INF = 1000000000;
   const WIN = 100000;
   const MATE_THRESHOLD = 99000;
-  const MAX_QPLY = 40;
   const MAX_EXTENSIONS = 2;
 
   /* =========================================================
@@ -514,7 +515,9 @@
     let previousPV = [];
 
     function checkStop() {
-      if ((nodes & 1023) !== 0) return false;
+      // Count both normal and quiescence nodes. Otherwise a search spending
+      // most of its time in quiescence could go too long without checking.
+      if (((nodes + qnodes) & 1023) !== 0) return false;
 
       if (
         Date.now() >= deadline ||
@@ -628,13 +631,10 @@
 
       const forcedCapture = moves[0].captures.length > 0;
 
-      if (qply >= MAX_QPLY) {
-        return {
-          score: evaluate(pos),
-          pv: [],
-          aborted: false
-        };
-      }
+      // In English draughts every quiescence continuation is a compulsory
+      // capture, and every such move removes at least one piece. A legal
+      // position has at most 24 pieces, so this sequence is naturally finite.
+      // Do not evaluate a position in the middle of a forced capture sequence.
 
       // No compulsory capture: quiet position is stable enough.
       if (!forcedCapture) {
@@ -799,10 +799,29 @@
             childExtensions
           );
         } else {
-          // Null-window search.
+          // Conservative Late Move Reductions: only reduce late, quiet moves
+          // at non-PV nodes. Captures and promotions are never reduced.
+          // Any reduced move that raises alpha is immediately re-searched
+          // at its full depth before it can affect the principal result.
+          let reduction = 0;
+
+          if (
+            !pvNode &&
+            depth >= 3 &&
+            childDepth >= 2 &&
+            i >= 3 &&
+            move.captures.length === 0 &&
+            !move.promotes
+          ) {
+            reduction = (
+              depth >= 7 && i >= 8
+            ) ? 2 : 1;
+          }
+
+          // Null-window search, optionally at reduced depth.
           result = negamax(
             child,
-            childDepth,
+            Math.max(0, childDepth - reduction),
             -alpha - 1,
             -alpha,
             ply + 1,
@@ -810,7 +829,24 @@
             childExtensions
           );
 
-          // Re-search if the move appears to improve alpha.
+          // A reduced move that looks competitive must prove it at full depth.
+          if (
+            !result.aborted &&
+            reduction > 0 &&
+            -result.score > alpha
+          ) {
+            result = negamax(
+              child,
+              childDepth,
+              -alpha - 1,
+              -alpha,
+              ply + 1,
+              false,
+              childExtensions
+            );
+          }
+
+          // Re-search in the full window if the move improves alpha.
           if (
             !result.aborted &&
             -result.score > alpha &&
@@ -856,13 +892,20 @@
       }
 
       const old = tt.table[index];
+      const samePosition = !!old &&
+        old.hash === hash &&
+        old.verify === verify;
 
-      if (
+      // Prefer fresh information for the same position. On collisions,
+      // avoid letting a stale deep entry permanently block useful entries;
+      // retain a substantially deeper entry unless the new one is exact.
+      const replace =
         !old ||
-        old.hash !== hash ||
-        old.verify !== verify ||
-        depth >= old.depth
-      ) {
+        samePosition ||
+        depth >= old.depth - 2 ||
+        (flag === EXACT && old.flag !== EXACT);
+
+      if (replace) {
         if (!old) tt.used++;
 
         tt.table[index] = {
@@ -1070,6 +1113,16 @@
     return total;
   }
 
+  function perftDivide(position, depth) {
+    if (depth < 1) return [];
+
+    return legalMoves(position).map(move => ({
+      move,
+      notation: moveNotation(move),
+      nodes: perft(applyMove(position, move), depth - 1)
+    }));
+  }
+
   /* =========================================================
      PUBLIC API
   ========================================================= */
@@ -1090,6 +1143,7 @@
     searchAsync,
 
     perft,
+    perftDivide,
     moveNotation,
     squareName,
 
